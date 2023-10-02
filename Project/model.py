@@ -110,3 +110,34 @@ class PositionalEncoding(nn.Module):
             x - (torch tensor) positional embedded data. Shape = (B, N, C) 
         """
         return x + self.pe[:, :x.size(1)]
+
+class PositionWiseFeedForward(nn.Module):
+    def __init__(self, embedding_size, feedforward_size):
+
+        super(PositionWiseFeedForward, self).__init__()
+        self.fc1 = nn.Linear(embedding_size, feedforward_size)
+        self.fc2 = nn.Linear(feedforward_size, embedding_size)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+
+        return x
+
+
+class EncoderLayer(nn.Module):
+    def __init__(self, embedding_size, num_heads, feedforward_size, dropout):
+        super(EncoderLayer, self).__init__()
+        self.self_attn = MultiHeadAttention(embedding_size, num_heads)
+        self.feed_forward = PositionWiseFeedForward(embedding_size, feedforward_size)
+        self.norm1 = nn.LayerNorm(embedding_size)
+        self.norm2 = nn.LayerNorm(embedding_size)
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x, mask):
+        attn_output = self.self_attn(x, x, x, mask)
+        x = self.norm1(x + self.dropout(attn_output))
+        ff_output = self.feed_forward(x)
+        x = self.norm2(x + self.dropout(ff_output))
+        return x
