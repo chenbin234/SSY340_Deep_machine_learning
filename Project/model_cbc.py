@@ -14,7 +14,7 @@ class MultiHeadAttention(nn.Module):
         """
         super(MultiHeadAttention, self).__init__()
 
-        # assert embedding_size % num_heads == 0, "embedding_size must be divisible by num_heads"
+        assert embedding_size % num_heads == 0, "embedding_size must be divisible by num_heads"
 
         # initialize values
         self.num_heads = num_heads
@@ -172,19 +172,39 @@ class DecoderLayer(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, embedding_size, num_heads, num_layers, d_ff, max_seq_length, dropout):
+
+    """class to create the complete transformer architecture
+    """
+
+    def __init__(self, encoder_input_size, decoder_input_size, embedding_size, num_heads, num_layers, feedforward_size, dropout=0.1, max_seq_length=100):
+        """class initializer
+
+        Args:
+            encoder_input_size (int): dimension of the encoder input, shape (B, 8, encoder_input_size)
+            decoder_input_size (int): dimension of the decoder input, shape (B, 12, decoder_input_size)
+            embedding_size (int): embedding size, e.g 512, change one-hot encoding to word embedding.
+            num_heads (int): number of heads in multi-head self-attention
+            num_layers (int): the number of encoder blocks and decoder blocks
+            feedforward_size (int): size of linear layer in feedforward network (same in Encoder & Decoder)
+            dropout (float): 0-1, dropout percentage, default value = 0.1
+            max_seq_length (int): maximum length of sequence in Encoder and Decoder (used in PositionalEncoding)
+        """
         super(Transformer, self).__init__()
-        self.encoder_embedding = nn.Embedding(src_vocab_size, embedding_size)
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size, embedding_size)
+
+        #
+        self.encoder_embedding = nn.Embedding(
+            encoder_input_size, embedding_size)
+        self.decoder_embedding = nn.Embedding(
+            decoder_input_size, embedding_size)
         self.positional_encoding = PositionalEncoding(
             embedding_size, max_seq_length)
 
         self.encoder_layers = nn.ModuleList(
-            [EncoderLayer(embedding_size, num_heads, d_ff, dropout) for _ in range(num_layers)])
+            [EncoderLayer(embedding_size, num_heads, feedforward_size, dropout) for _ in range(num_layers)])
         self.decoder_layers = nn.ModuleList(
-            [DecoderLayer(embedding_size, num_heads, d_ff, dropout) for _ in range(num_layers)])
+            [DecoderLayer(embedding_size, num_heads, feedforward_size, dropout) for _ in range(num_layers)])
 
-        self.fc = nn.Linear(embedding_size, tgt_vocab_size)
+        self.fc = nn.Linear(embedding_size, decoder_input_size)
         self.dropout = nn.Dropout(dropout)
         # self.output_gen = nn.Linear()
 
