@@ -14,7 +14,7 @@ class MultiHeadAttention(nn.Module):
         """
         super(MultiHeadAttention, self).__init__()
 
-        # assert embedding_size % num_heads == 0, "embedding_size must be divisible by num_heads"
+        assert embedding_size % num_heads == 0, "embedding_size must be divisible by num_heads"
 
         # initialize values
         self.num_heads = num_heads
@@ -48,6 +48,7 @@ class MultiHeadAttention(nn.Module):
 
         # applying mask on attention, we use large negative values -1e9 instead of 0, because after softmax function, the result will be close to 0.
         if mask is not None:
+            mask = mask.unsqueeze(1)
             attn_scores = attn_scores.masked_fill(mask == 0, -1e9)
 
         # Softmax is applied to obtain attention probabilities
@@ -85,9 +86,59 @@ class MultiHeadAttention(nn.Module):
         return output
 
 
+class Embeddings(nn.Module):
+    """
+    class to generate the embeddings for encoder and decoder input data
+    """
+
+    def __init__(self, input_size, embedding_size):
+        """
+        class initializer
+
+        INPUT:
+        input_size - (int) size of the input data
+        embedding_size - (int) size of the embedding
+        """
+        super(Embeddings, self).__init__()
+
+        # caching values
+        self.embedding_size = embedding_size
+
+        # creating liner layer for embedding input data
+        self.linear_embd = nn.Linear(input_size, embedding_size)
+
+        # creating object for positional encoding
+        # self.pos_encoding = PositionalEncoding(embedding_size)
+
+    def forward(self, x):
+        """
+        forward pass to generate input embeddings
+
+        INPUT:
+        x - (torch tensor) input data. Shape = (B, N, input_dimension)
+
+        OUTPUT:
+        x - (torch tensor) embedded data. Shape = (B, N, C)
+        """
+
+        # creating embeddings for input data
+        # Shape = (B, N, C)
+        x = self.linear_embd(x.float()) * math.sqrt(self.embedding_size)
+        # incorporating positional embeddings
+        # x = self.pos_encoding.forward(x)
+
+        return x
+
+
 class PositionalEncoding(nn.Module):
 
-    def __init__(self, embedding_size, max_seq_length):
+    def __init__(self, embedding_size, max_seq_length=100):
+        """_summary_
+
+        Args:
+            embedding_size (int): embedding size, e.g 512
+            max_seq_length (int, optional): maximum length of sequence in Encoder and Decoder. Defaults to 100.
+        """
 
         super(PositionalEncoding, self).__init__()
         pe = torch.zeros(max_seq_length, embedding_size)
@@ -140,7 +191,7 @@ class EncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, mask):
-        attn_output = self.self_attn(x, mask)
+        attn_output = self.self_attn.forward(x, x, x, mask)
         x = self.norm1(x + self.dropout(attn_output))
         ff_output = self.feed_forward(x)
         x = self.norm2(x + self.dropout(ff_output))
@@ -161,9 +212,9 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, encoder_output, source_mask, target_mask):
-        attn_output = self.self_attn(x, target_mask)
+        attn_output = self.self_attn.forward(x, x, x, target_mask)
         x = self.norm1(x + self.dropout(attn_output))
-        attn_output = self.cross_attn(
+        attn_output = self.cross_attn.forward(
             x, encoder_output, encoder_output, source_mask)
         x = self.norm2(x + self.dropout(attn_output))
         feedforward_output = self.feed_forward(x)
@@ -172,45 +223,114 @@ class DecoderLayer(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, src_vocab_size, tgt_vocab_size, embedding_size, num_heads, num_layers, d_ff, max_seq_length, dropout):
+
+    """class to create the complete transformer architecture
+    """
+
+    def __init__(self, encoder_input_size, decoder_input_size, embedding_size, num_heads, num_layers, feedforward_size, dropout=0.1):
+        """class initializer
+
+        Args:
+            encoder_input_size (int): dimension of the encoder input, shape (B, 8, encoder_input_size)
+            decoder_input_size (int): dimension of the decoder input, shape (B, 12, decoder_input_size)
+            embedding_size (int): embedding size, e.g 512, change one-hot encoding to word embedding.
+            num_heads (int): number of heads in multi-head self-attention
+            num_layers (int): the number of encoder blocks and decoder blocks
+            feedforward_size (int): size of linear layer in feedforward network (same in Encoder & Decoder)
+            dropout (float): 0-1, dropout percentage, default value = 0.1
+        """
         super(Transformer, self).__init__()
-        self.encoder_embedding = nn.Embedding(src_vocab_size, embedding_size)
-        self.decoder_embedding = nn.Embedding(tgt_vocab_size, embedding_size)
-        self.positional_encoding = PositionalEncoding(
-            embedding_size, max_seq_length)
 
+        # Encoder input embeddings (word embeddings)
+        # input size (B, 8, encoder_input_size), output size (B, 8, embedding_size)
+        self.encoder_embedding = Embeddings(encoder_input_size, embedding_size)
+
+        # Decoder input embeddings (word embeddings)
+        # input size (B, 12, decoder_input_size), output size (B, 12, embedding_size)
+        self.decoder_embedding = Embeddings(decoder_input_size, embedding_size)
+
+        # Positional Encoding for Encoder & Decoder
+        self.positional_encoding = PositionalEncoding(embedding_size)
+
+        # stack num_layers' Encoder (or Decoder) blocks
         self.encoder_layers = nn.ModuleList(
-            [EncoderLayer(embedding_size, num_heads, d_ff, dropout) for _ in range(num_layers)])
+            [EncoderLayer(embedding_size, num_heads, feedforward_size, dropout) for _ in range(num_layers)])
         self.decoder_layers = nn.ModuleList(
-            [DecoderLayer(embedding_size, num_heads, d_ff, dropout) for _ in range(num_layers)])
+            [DecoderLayer(embedding_size, num_heads, feedforward_size, dropout) for _ in range(num_layers)])
 
-        self.fc = nn.Linear(embedding_size, tgt_vocab_size)
+        # Linear layer after the Decoder for model ouput
+        # output size (B, 12, decoder_input_size)
+        self.fc = nn.Linear(embedding_size, decoder_input_size)
+
+        # Dropout layer
         self.dropout = nn.Dropout(dropout)
-        # self.output_gen = nn.Linear()
 
     def generate_mask(self, src, tgt):
-        src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
-        tgt_mask = (tgt != 0).unsqueeze(1).unsqueeze(3)
-        seq_length = tgt.size(1)
+        """generate mask 
+
+        Args:
+            src (torch tensor): _description_
+            tgt (torch tensor): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        # src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
+        # # tgt_mask = (tgt != 0).unsqueeze(1).unsqueeze(3)
+        # tgt_mask = (tgt != 0).unsqueeze(1)
+        # seq_length = tgt.size(1)
+        # nopeak_mask = (
+        #     1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
+        # tgt_mask = tgt_mask & nopeak_mask
+
+        seq_length0 = src.shape[1]
+        batch_size = tgt.shape[0]
+        seq_length1 = tgt.shape[1]
+
         nopeak_mask = (
-            1 - torch.triu(torch.ones(1, seq_length, seq_length), diagonal=1)).bool()
-        tgt_mask = tgt_mask & nopeak_mask
+            1 - torch.triu(torch.ones(1, seq_length1, seq_length1), diagonal=1)).bool()
+        tgt_mask = nopeak_mask.repeat(batch_size, 1, 1)
+
+        src_mask = torch.ones(batch_size, seq_length0, seq_length0)
+
+        # dec_source_mask = torch.ones((enc_input.shape[0], 1, enc_input.shape[1])).to(device)
+        # dec_target_mask = utils.subsequent_mask(dec_input.shape[1]).repeat(dec_input.shape[0], 1, 1).to(device)
+
         return src_mask, tgt_mask
 
     def forward(self, src, tgt):
-        src_mask, tgt_mask = self.generate_mask(src, tgt)
-        src_embedded = self.dropout(
-            self.positional_encoding(self.encoder_embedding(src)))
-        tgt_embedded = self.dropout(
-            self.positional_encoding(self.decoder_embedding(tgt)))
 
+        # genarate mask for encoder and Decoder
+        print('genarate mask')
+        src_mask, tgt_mask = self.generate_mask(src, tgt)
+
+        print('start src_word_embeddings')
+        src_word_embeddings = self.encoder_embedding.forward(src)
+
+        print('start src positional_encoding')
+        src_embedded = self.positional_encoding.forward(src_word_embeddings)
+
+        print('start tgt_word_embeddings')
+        tgt_word_embeddings = self.encoder_embedding.forward(tgt)
+
+        print('start tgt positional_encoding')
+        tgt_embedded = self.positional_encoding.forward(tgt_word_embeddings)
+
+        # src_embedded = self.dropout(
+        #     self.positional_encoding(self.encoder_embedding(src)))
+        # tgt_embedded = self.dropout(
+        #     self.positional_encoding(self.decoder_embedding(tgt)))
+
+        print('start Encoder')
         enc_output = src_embedded
         for enc_layer in self.encoder_layers:
             enc_output = enc_layer(enc_output, src_mask)
 
+        print('start Decoder')
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
             dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
 
+        # output size (B, 12, decoder_input_size)
         output = self.fc(dec_output)
         return output
