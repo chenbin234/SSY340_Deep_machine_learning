@@ -212,10 +212,16 @@ class DecoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, encoder_output, source_mask, target_mask):
+
+        # print('start Decoder layer masked multihead attention')
         attn_output = self.self_attn.forward(x, x, x, target_mask)
         x = self.norm1(x + self.dropout(attn_output))
+
+        # print('start Decoder layer cross multihead attention')
+        # attn_output = self.cross_attn.forward(x, encoder_output, encoder_output, source_mask)
         attn_output = self.cross_attn.forward(
-            x, encoder_output, encoder_output, source_mask)
+            x, encoder_output, encoder_output, mask=None)
+
         x = self.norm2(x + self.dropout(attn_output))
         feedforward_output = self.feed_forward(x)
         x = self.norm3(x + self.dropout(feedforward_output))
@@ -301,19 +307,19 @@ class Transformer(nn.Module):
     def forward(self, src, tgt):
 
         # genarate mask for encoder and Decoder
-        print('genarate mask')
+        # print('genarate mask')
         src_mask, tgt_mask = self.generate_mask(src, tgt)
 
-        print('start src_word_embeddings')
+        # print('start src_word_embeddings')
         src_word_embeddings = self.encoder_embedding.forward(src)
 
-        print('start src positional_encoding')
+        # print('start src positional_encoding')
         src_embedded = self.positional_encoding.forward(src_word_embeddings)
 
-        print('start tgt_word_embeddings')
-        tgt_word_embeddings = self.encoder_embedding.forward(tgt)
+        # print('start tgt_word_embeddings')
+        tgt_word_embeddings = self.decoder_embedding.forward(tgt)
 
-        print('start tgt positional_encoding')
+        # print('start tgt positional_encoding')
         tgt_embedded = self.positional_encoding.forward(tgt_word_embeddings)
 
         # src_embedded = self.dropout(
@@ -321,12 +327,12 @@ class Transformer(nn.Module):
         # tgt_embedded = self.dropout(
         #     self.positional_encoding(self.decoder_embedding(tgt)))
 
-        print('start Encoder')
+        # print('start Encoder')
         enc_output = src_embedded
         for enc_layer in self.encoder_layers:
             enc_output = enc_layer(enc_output, src_mask)
 
-        print('start Decoder')
+        # print('start Decoder')
         dec_output = tgt_embedded
         for dec_layer in self.decoder_layers:
             dec_output = dec_layer(dec_output, enc_output, src_mask, tgt_mask)
