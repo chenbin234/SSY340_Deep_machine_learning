@@ -86,11 +86,11 @@ class LSTM(nn.Module):
         self.output_size = output_size
 
         # add the first layer, the input size is input_size
-        self.LSTM_first_layer = nn.ModuleList(
-            [LSTMCell(self.input_size, self.hidden_size)])
+        self.LSTM_first_layer = nn.ModuleList([
+            LSTMCell(self.input_size, self.hidden_size)])
 
         # add the left other layers, Note the input size is hidden_size
-        self.LSTM_whole = self.LSTM_first_layer.append(
+        self.LSTM_whole = self.LSTM_first_layer.extend(
             [LSTMCell(self.hidden_size, self.hidden_size) for _ in range(1, num_layers)])
 
         # add a linear layer
@@ -123,7 +123,7 @@ class LSTM(nn.Module):
         for layer in range(self.num_layers):
             h_t_c_t.append((h_0[layer, :, :], c_0[layer, :, :]))
 
-        seq_len = input.size(1)
+        seq_len = X.size(1)
         for seq in range(seq_len):
             for layer in range(self.num_layers):
                 # For the first layer, input is X[:, seq, :] with the shape (batch_size, input_size)
