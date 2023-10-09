@@ -70,7 +70,7 @@ class LSTM(nn.Module):
     """implement a complete LSTM model
     """
 
-    def __init__(self, input_size, hidden_size, num_layers, output_size):
+    def __init__(self, input_size, input_seq_len, hidden_size, num_layers, output_size, output_seq_len):
         """initiate value
 
         Args:
@@ -81,9 +81,11 @@ class LSTM(nn.Module):
         """
         super(LSTM, self).__init__()
         self.input_size = input_size
+        self.input_seq_len = input_seq_len
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.output_size = output_size
+        self.output_seq_len = output_seq_len
 
         # add the first layer, the input size is input_size
         self.LSTM_first_layer = nn.ModuleList([
@@ -94,7 +96,7 @@ class LSTM(nn.Module):
             [LSTMCell(self.hidden_size, self.hidden_size) for _ in range(1, num_layers)])
 
         # add a linear layer
-        self.fc = nn.Linear(self.hidden_size, self.output_size)
+        self.fc = nn.Linear(self.hidden_size * self.input_seq_len, self.output_size * self.output_seq_len)
 
     def forward(self, X, hx=None):
         """_summary_
@@ -146,7 +148,11 @@ class LSTM(nn.Module):
             outs.append(h_t_c_t_layer[0])
 
         # we pick the last h_t
-        out = outs[-1].squeeze()
+        # out = outs[-1].squeeze()
+
+        out = torch.stack(outs, dim=0)
+        out = out.transpose(0,1)
+        out = out.contiguous().view(batch_size, -1)
 
         output = self.fc(out)
 
