@@ -295,9 +295,9 @@ class Transformer(nn.Module):
 
         nopeak_mask = (
             1 - torch.triu(torch.ones(1, seq_length1, seq_length1), diagonal=1)).bool()
-        tgt_mask = nopeak_mask.repeat(batch_size, 1, 1)
+        tgt_mask = nopeak_mask.repeat(batch_size, 1, 1).to(tgt.device)
 
-        src_mask = torch.ones(batch_size, 1, seq_length0)
+        src_mask = torch.ones(batch_size, 1, seq_length0).to(src.device)
 
         # dec_source_mask = torch.ones((enc_input.shape[0], 1, enc_input.shape[1])).to(device)
         # dec_target_mask = utils.subsequent_mask(dec_input.shape[1]).repeat(dec_input.shape[0], 1, 1).to(device)
