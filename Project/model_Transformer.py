@@ -218,9 +218,9 @@ class DecoderLayer(nn.Module):
         x = self.norm1(x + self.dropout(attn_output))
 
         # print('start Decoder layer cross multihead attention')
-        # attn_output = self.cross_attn.forward(x, encoder_output, encoder_output, source_mask)
         attn_output = self.cross_attn.forward(
-            x, encoder_output, encoder_output, mask=None)
+            x, encoder_output, encoder_output, source_mask)
+        # attn_output = self.cross_attn.forward(x, encoder_output, encoder_output, mask=None)
 
         x = self.norm2(x + self.dropout(attn_output))
         feedforward_output = self.feed_forward(x)
@@ -297,7 +297,7 @@ class Transformer(nn.Module):
             1 - torch.triu(torch.ones(1, seq_length1, seq_length1), diagonal=1)).bool()
         tgt_mask = nopeak_mask.repeat(batch_size, 1, 1)
 
-        src_mask = torch.ones(batch_size, seq_length0, seq_length0)
+        src_mask = torch.ones(batch_size, 1, seq_length0)
 
         # dec_source_mask = torch.ones((enc_input.shape[0], 1, enc_input.shape[1])).to(device)
         # dec_target_mask = utils.subsequent_mask(dec_input.shape[1]).repeat(dec_input.shape[0], 1, 1).to(device)
