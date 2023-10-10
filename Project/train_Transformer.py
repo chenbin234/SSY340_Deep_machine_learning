@@ -8,7 +8,7 @@ from tqdm import tqdm
 import numpy as np
 import os
 import dataloader
-import model_cbc
+import model_Transformer
 import utils
 import matplotlib.pyplot as plt
 
@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
     # tf_model = model.TFModel(encoder_ip_size, decoder_ip_size, model_op_size, emb_size,
     #                          num_heads, ff_hidden_size, n, dropout=0.1).to(device)
-    tf_model = model_cbc.Transformer(encoder_input_size=2, decoder_input_size=3,
+    tf_model = model_Transformer.Transformer(encoder_input_size=2, decoder_input_size=3,
                                     embedding_size=512, num_heads=8, num_layers=6, feedforward_size=2048)
 
 
@@ -270,7 +270,7 @@ if __name__ == "__main__":
     # model_loaded = model.TFModel(encoder_ip_size, decoder_ip_size, model_op_size, emb_size,
     #                              num_heads, ff_hidden_size, n, dropout=0.1)
     
-    model_loaded = model_cbc.Transformer(encoder_input_size=2, decoder_input_size=3,
+    model_loaded = model_Transformer.Transformer(encoder_input_size=2, decoder_input_size=3,
                                     embedding_size=512, num_heads=8, num_layers=6, feedforward_size=2048)
 
 
