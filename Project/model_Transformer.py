@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import math
+from torch.autograd import Variable
 
 
 class MultiHeadAttention(nn.Module):
@@ -28,6 +29,9 @@ class MultiHeadAttention(nn.Module):
         self.W_v = nn.Linear(embedding_size, embedding_size)  # Value
         self.W_o = nn.Linear(embedding_size, embedding_size)  # post attention
 
+        # dropout layer
+        self.dropout = nn.Dropout(0.1)
+
     def normalized_dot_product_attention(self, Q, K, V, mask=None):
         """_summary_
 
@@ -53,6 +57,7 @@ class MultiHeadAttention(nn.Module):
 
         # Softmax is applied to obtain attention probabilities
         attn_probs = torch.softmax(attn_scores, dim=-1)
+        attn_probs = self.dropout(attn_probs)
 
         # Multiply by values to obtain the final output
         attn_output = torch.matmul(attn_probs, V)
@@ -132,7 +137,7 @@ class Embeddings(nn.Module):
 
 class PositionalEncoding(nn.Module):
 
-    def __init__(self, embedding_size, max_seq_length=100):
+    def __init__(self, embedding_size, max_seq_length=5000):
         """_summary_
 
         Args:
@@ -161,7 +166,7 @@ class PositionalEncoding(nn.Module):
         Returns:
             x - (torch tensor) positional embedded data. Shape = (B, N, C) 
         """
-        return x + self.pe[:, :x.size(1)]
+        return x + Variable(self.pe[:, :x.size(1)], requires_grad=False)
 
 
 class PositionWiseFeedForward(nn.Module):
@@ -171,60 +176,93 @@ class PositionWiseFeedForward(nn.Module):
         self.fc1 = nn.Linear(embedding_size, feedforward_size)
         self.fc2 = nn.Linear(feedforward_size, embedding_size)
         self.relu = nn.ReLU()
+        # self.dropout = nn.Dropout(0.1)
 
     def forward(self, x):
         x = self.relu(self.fc1(x))
+        # x = self.dropout(x)
         x = self.fc2(x)
 
         return x
 
 
 class EncoderLayer(nn.Module):
-    def __init__(self, embedding_size, num_heads, feedforward_size, dropout):
+    def __init__(self, embedding_size, num_heads, feedforward_size, dropout=0.1):
         super(EncoderLayer, self).__init__()
 
         self.self_attn = MultiHeadAttention(embedding_size, num_heads)
         self.feed_forward = PositionWiseFeedForward(
             embedding_size, feedforward_size)
-        self.norm1 = nn.LayerNorm(embedding_size)
-        self.norm2 = nn.LayerNorm(embedding_size)
+
+        # normalise the input of the multihead self-attention sub-layer
+        self.norm_input = nn.LayerNorm(embedding_size)
+
+        # normalise the output of the multihead self-attention
+        self.norm_output = nn.LayerNorm(embedding_size)
+
+        # normalise the output of feedforward
+        self.norm_feedforward = nn.LayerNorm(embedding_size)
+
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, mask):
-        attn_output = self.self_attn.forward(x, x, x, mask)
-        x = self.norm1(x + self.dropout(attn_output))
-        ff_output = self.feed_forward(x)
-        x = self.norm2(x + self.dropout(ff_output))
+
+        # sublayer1: Multihead attention + Add + Normalise + drop
+        attn_output = self.self_attn.forward(self.norm_input(
+            x), self.norm_input(x), self.norm_input(x), mask)
+        x = self.norm_output(x + self.dropout(attn_output))
+
+        # sublayer2: feedforward + Add + Normalise + drop
+        feedforward_output = self.feed_forward(x)
+        x = self.norm_feedforward(x + self.dropout(feedforward_output))
         return x
 
 
 class DecoderLayer(nn.Module):
 
-    def __init__(self, embedding_size, num_heads, feedforward_size, dropout):
+    def __init__(self, embedding_size, num_heads, feedforward_size, dropout=0.1):
         super(DecoderLayer, self).__init__()
         self.self_attn = MultiHeadAttention(embedding_size, num_heads)
         self.cross_attn = MultiHeadAttention(embedding_size, num_heads)
         self.feed_forward = PositionWiseFeedForward(
             embedding_size, feedforward_size)
-        self.norm1 = nn.LayerNorm(embedding_size)
-        self.norm2 = nn.LayerNorm(embedding_size)
-        self.norm3 = nn.LayerNorm(embedding_size)
+
+        # normalise the input of the multihead self-attention sub-layer
+        self.norm_input = nn.LayerNorm(embedding_size)
+
+        # normalise the output of the masked multihead self-attention
+        self.norm_mask_output = nn.LayerNorm(embedding_size)
+
+        # normalise the input of cross multihead self attention
+        self.norm_cross_input = nn.LayerNorm(embedding_size)
+
+        # normalise the output of cross multihead self attention
+        self.norm_cross_output = nn.LayerNorm(embedding_size)
+
+        # normalise the output of cross multihead self attention
+        self.norm_feedforward_output = nn.LayerNorm(embedding_size)
+
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, encoder_output, source_mask, target_mask):
 
+        # sublayer1: masked multihead + add + normalise + drop
         # print('start Decoder layer masked multihead attention')
-        attn_output = self.self_attn.forward(x, x, x, target_mask)
-        x = self.norm1(x + self.dropout(attn_output))
+        x_norm = self.norm_input(x)
+        attn_output = self.self_attn.forward(
+            x_norm, x_norm, x_norm, target_mask)
+        x = x + self.dropout(attn_output)
 
+        # sublayer2: cross multihead + add + normalise + drop
         # print('start Decoder layer cross multihead attention')
         attn_output = self.cross_attn.forward(
-            x, encoder_output, encoder_output, source_mask)
-        # attn_output = self.cross_attn.forward(x, encoder_output, encoder_output, mask=None)
+            self.norm_cross_input(x), self.norm_cross_input(encoder_output), self.norm_cross_input(encoder_output), source_mask)
+        x = x + self.dropout(attn_output)
 
-        x = self.norm2(x + self.dropout(attn_output))
+        # sublayer3: feedforward + add + normalise + drop
+        x = self.norm_cross_output(x)
         feedforward_output = self.feed_forward(x)
-        x = self.norm3(x + self.dropout(feedforward_output))
+        x = self.norm_feedforward_output(x + self.dropout(feedforward_output))
         return x
 
 
