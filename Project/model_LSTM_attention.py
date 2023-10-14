@@ -135,11 +135,11 @@ class LSTM(nn.Module):
                 if layer == 0:
                     # h_t_c_t_layer is actually (h_1, c_1)
                     h_t_c_t_layer = self.LSTM_whole[layer](
-                        X[:, seq, :], (h_t_c_t[layer][0], h_t_c_t[layer][1]))
+                        X[:, seq, :].to(X.device), (h_t_c_t[layer][0].to(X.device), h_t_c_t[layer][1].to(X.device)))
                 # For the other layers, input is the output h_t from previous layer
                 else:
                     h_t_c_t_layer = self.LSTM_whole[layer](
-                        h_t_c_t[layer - 1][0], (h_t_c_t[layer][0], h_t_c_t[layer][1]))
+                        h_t_c_t[layer - 1][0].to(X.device), (h_t_c_t[layer][0].to(X.device), h_t_c_t[layer][1].to(X.device)))
 
                 # update (h_t, c_t) for different layer in h_t_c_t
                 h_t_c_t[layer] = h_t_c_t_layer
@@ -184,7 +184,7 @@ class Encoder(nn.Module):
         Args:
             X (tensor): shape (64,8,2)
         """
-        X = self.encoder_embedding.forward(X)
+        X = self.encoder_embedding.forward(X.to(X.device))
 
         # X_tilde is the output of multihead attn, X_tilde should have the same size of X, which is (64,8,2)
         X_tilde = self.encoder_attn.forward(X, X, X, mask=None)
@@ -219,7 +219,7 @@ class Decoder(nn.Module):
 
     def forward(self, X_encoder, hx=None):
 
-        X_encoder = X_encoder.transpose(0, 1)
+        X_encoder = X_encoder.transpose(0, 1).to(X_encoder.device)
 
         batch_size = X_encoder.size(0)
         if hx is None:
@@ -241,13 +241,13 @@ class Decoder(nn.Module):
             for layer in range(self.num_layers):
                 if layer == 0:
                     # h_t_c_t_layer is actually (h_1, c_1)
-                    input = self.decoder_cross_attn.forward(h_t_c_t[layer][0], X_encoder[:, seq, :], X_encoder[:, seq, :], mask=None)
+                    input = self.decoder_cross_attn.forward(h_t_c_t[layer][0].unsqueeze(1).to(X_encoder.device), X_encoder[:, seq, :].unsqueeze(1).to(X_encoder.device), X_encoder[:, seq, :].unsqueeze(1).to(X_encoder.device), mask=None)
                     h_t_c_t_layer = self.LSTM_layer[layer](
-                        input, (h_t_c_t[layer][0], h_t_c_t[layer][1]))
+                        input[:,0,:].to(X_encoder.device), (h_t_c_t[layer][0].to(X_encoder.device), h_t_c_t[layer][1].to(X_encoder.device)))
                 # For the other layers, input is the output h_t from previous layer
                 else:
                     h_t_c_t_layer = self.LSTM_layer[layer](
-                        h_t_c_t[layer - 1][0], (h_t_c_t[layer][0], h_t_c_t[layer][1]))
+                        h_t_c_t[layer - 1][0].to(X_encoder.device), (h_t_c_t[layer][0].to(X_encoder.device), h_t_c_t[layer][1].to(X_encoder.device)))
 
                 # update (h_t, c_t) for different layer in h_t_c_t
                 h_t_c_t[layer] = h_t_c_t_layer
