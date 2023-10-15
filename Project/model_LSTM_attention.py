@@ -171,12 +171,17 @@ class Encoder(nn.Module):
         self.embedding_size = embedding_size
         self.num_heads = num_heads
 
-        self.encoder_embedding = Embeddings(input_size, embedding_size)
+        self.encoder_embedding = Embeddings(self.input_size, self.embedding_size)
+        
+        # normalise the input of the multihead self-attention sub-layer
+        self.norm_input = nn.LayerNorm(self.embedding_size)
 
-        self.encoder_attn = MultiHeadAttention(embedding_size, num_heads)
+        self.encoder_attn = MultiHeadAttention(self.embedding_size, self.num_heads)
 
         self.encoder_lstm = LSTM(
             self.embedding_size, self.hidden_size, self.num_layers)
+        
+        self.norm_output = nn.LayerNorm(self.hidden_size)
 
     def forward(self, X):
         """_summary_
@@ -185,12 +190,15 @@ class Encoder(nn.Module):
             X (tensor): shape (64,8,2)
         """
         X = self.encoder_embedding.forward(X.to(X.device))
+        
 
         # X_tilde is the output of multihead attn, X_tilde should have the same size of X, which is (64,8,2)
-        X_tilde = self.encoder_attn.forward(X, X, X, mask=None)
+        X_tilde = self.encoder_attn.forward(self.norm_input(X), self.norm_input(X), self.norm_input(X), mask=None)
 
         # encoder_output should have the shape (seq_len, batch_size, hidden_size), which is (8, 64, 128), suppose hidden size is 128
         encoder_output = self.encoder_lstm.forward(X_tilde)
+        
+        encoder_output = self.norm_output(encoder_output)
 
         return encoder_output
 
@@ -207,8 +215,11 @@ class Decoder(nn.Module):
         self.input_seq_len = input_seq_len
         self.output_size = output_size
         self.output_seq_len = output_seq_len
+        
+        # normalise the input of the multihead self-attention sub-layer
+        self.norm_input = nn.LayerNorm(self.hidden_size)
 
-        self.decoder_cross_attn = MultiHeadAttention(embedding_size, num_heads)
+        self.decoder_cross_attn = MultiHeadAttention(self.embedding_size, self.num_heads)
 
         self.LSTM_layer = nn.ModuleList([
             LSTMCell(self.hidden_size, self.hidden_size) for _ in range(num_layers)])
@@ -241,7 +252,7 @@ class Decoder(nn.Module):
             for layer in range(self.num_layers):
                 if layer == 0:
                     # h_t_c_t_layer is actually (h_1, c_1)
-                    input = self.decoder_cross_attn.forward(h_t_c_t[layer][0].unsqueeze(1).to(X_encoder.device), X_encoder[:, seq, :].unsqueeze(1).to(X_encoder.device), X_encoder[:, seq, :].unsqueeze(1).to(X_encoder.device), mask=None)
+                    input = self.decoder_cross_attn.forward(self.norm_input(h_t_c_t[layer][0].unsqueeze(1).to(X_encoder.device)), self.norm_input(X_encoder[:, seq, :].unsqueeze(1).to(X_encoder.device)), self.norm_input(X_encoder[:, seq, :].unsqueeze(1).to(X_encoder.device)), mask=None)
                     h_t_c_t_layer = self.LSTM_layer[layer](
                         input[:,0,:].to(X_encoder.device), (h_t_c_t[layer][0].to(X_encoder.device), h_t_c_t[layer][1].to(X_encoder.device)))
                 # For the other layers, input is the output h_t from previous layer
