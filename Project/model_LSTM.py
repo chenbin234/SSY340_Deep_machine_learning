@@ -133,11 +133,11 @@ class LSTM(nn.Module):
                 if layer == 0:
                     # h_t_c_t_layer is actually (h_1, c_1)
                     h_t_c_t_layer = self.LSTM_whole[layer](
-                        X[:, seq, :], (h_t_c_t[layer][0], h_t_c_t[layer][1]))
+                        X[:, seq, :].to(X.device), (h_t_c_t[layer][0].to(X.device), h_t_c_t[layer][1].to(X.device)))
                 # For the other layers, input is the output h_t from previous layer
                 else:
                     h_t_c_t_layer = self.LSTM_whole[layer](
-                        h_t_c_t[layer - 1][0], (h_t_c_t[layer][0], h_t_c_t[layer][1]))
+                        h_t_c_t[layer - 1][0].to(X.device), (h_t_c_t[layer][0].to(X.device), h_t_c_t[layer][1].to(X.device)))
 
                 # update (h_t, c_t) for different layer in h_t_c_t
                 h_t_c_t[layer] = h_t_c_t_layer
